@@ -1,0 +1,33 @@
+How the project Works?
+
+1. schemas Folder
+    This folder defines the data structure for the requests sent to the API endpoints:
+
+        Purpose: Ensure data validation and structure using Pydantic models.
+        Example:
+                For the recommendation endpoint, the input schema expects a user_id, video_id, and watch_time.
+                If any field is missing or invalid, FastAPI will automatically return an error.
+
+2. models Folder
+        Purpose: Stores trained machine learning models as .joblib files.
+        How it works:
+                When the main.py file runs, it loads these models into memory using joblib.load().
+                Each model is used for predictions in its respective endpoint.
+
+
+3. train_models.py
+        Purpose: Trains the three models (recommendation, content moderation, ad targeting) and saves them as .joblib files.
+        Key Features:
+                Uses scikit-learn's RandomForestClassifier to train dummy data.
+                Generates .joblib files stored in models/.
+
+
+4. main.py
+        Purpose: Implements the FastAPI server with endpoints for predictions.
+        Key Features:
+                Loads pre-trained models.
+                
+        Defines endpoints /recommendations/, /moderation/, and /ad-targeting/.
+        Accepts JSON input, processes it into NumPy arrays, and uses the corresponding model to generate predictions.
+        Returns predictions as JSON responses.
+
