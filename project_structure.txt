@@ -1,5 +1,5 @@
 How the project Works?
- 
+
 1. schemas Folder
     This folder defines the data structure for the requests sent to the API endpoints:
 
