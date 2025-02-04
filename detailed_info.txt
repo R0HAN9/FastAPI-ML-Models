@@ -3,7 +3,7 @@ How the Project Works
 1. schemas Folder
 This folder defines the data structure for the requests sent to the API endpoints:
 
-Purpose: Ensure data validation and structure using Pydantic models.
+Purpose: Ensure data validation and structure using Pydantic models. 
 Example:
 For the recommendation endpoint, the input schema expects a user_id, video_id, and watch_time. If any field is missing or invalid, FastAPI will automatically return an error.
 
