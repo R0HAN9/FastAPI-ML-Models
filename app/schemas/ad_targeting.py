@@ -3,7 +3,7 @@ from typing import List
 
 # Define the schema for the Ad Targeting API request using Pydantic
 # This schema ensures the incoming request data is properly validated
-
+ 
 class AdTargetingRequest(BaseModel):
     """
     Schema for an ad-targeting request.
