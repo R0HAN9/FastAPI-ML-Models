@@ -1,177 +1,31 @@
-How the Project Works
+# FastAPI ML Service Dockerfile
 
-1. schemas Folder
-This folder defines the data structure for the requests sent to the API endpoints:
+FROM python:3.11-slim
 
-Purpose: Ensure data validation and structure using Pydantic models. 
-Example:
-For the recommendation endpoint, the input schema expects a user_id, video_id, and watch_time. If any field is missing or invalid, FastAPI will automatically return an error.
+# Set working directory
+WORKDIR /app
 
+# Copy requirements first for better caching
+COPY requirements.txt .
 
-2. models Folder
-Purpose: Stores trained machine learning models as .joblib files.
-How it works:
-When the main.py file runs, it loads these models into memory using joblib.load().
-Each model is used for predictions in its respective endpoint.
+# Install dependencies
+RUN pip install --no-cache-dir -r requirements.txt
 
+# Copy application code
+COPY . .
 
-3. train_models.py
-Purpose: Trains the three models (recommendation, content moderation, ad targeting) and saves them as .joblib files.
-Key Features:
-Uses scikit-learn's RandomForestClassifier to train dummy data.
-Generates .joblib files stored in models/.
+# Create models directory if it doesn't exist
+RUN mkdir -p app/models
 
+# Train models if they don't exist
+RUN python train_models.py
 
-4. main.py
-Purpose: Implements the FastAPI server with endpoints for predictions.
-Key Features:
-Loads pre-trained models.
-Defines endpoints /recommendations/, /moderation/, and /ad-targeting/.
-Accepts JSON input, processes it into NumPy arrays, and uses the corresponding model to generate predictions.
-Returns predictions as JSON responses.
+# Expose port
+EXPOSE 8000
 
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
-
-API Testing Examples Using Real-World Scenarios
---------------------------------------------------
-
-1. Recommendation Endpoint
-Imagine you want to recommend a video based on a user's behavior.
-
-URL: http://127.0.0.1:8000/recommendations/
-HTTP Method: POST
-Request Body:
-json
-Copy code
-{
-    "user_id": 101,
-    "video_id": 202,
-    "watch_time": 45.7
-}
-Scenario: User 101 watched 45.7 minutes of video 202.
-Expected Response:
-json
-Copy code
-{
-    "recommended_video": 1
-}
-Explanation: The model predicts whether a related video is recommended (1) or not (0).
-----------------------------------------------------------------------------------------------
-
-
-2. Moderation Endpoint
-Imagine you want to check if the content of a video is safe for publishing.
-
-URL: http://127.0.0.1:8000/moderation/
-HTTP Method: POST
-Request Body:
-json
-Copy code
-{
-    "video_id": 303,
-    "video_content": "This video contains no inappropriate material."
-}
-Scenario: Video 303 has text content describing its appropriateness.
-Expected Response:
-json
-Copy code
-{
-    "moderation_result": 1
-}
-Explanation: The model predicts whether the content is safe (1) or not (0).
---------------------------------------------------------------------------------------
-
-
-
-3. Ad Targeting Endpoint
-Imagine you want to target ads based on user demographics and interests.
-
-URL: http://127.0.0.1:8000/ad-targeting/
-HTTP Method: POST
-Request Body:
-json
-Copy code
-{
-    "user_id": 405,
-    "age": 29,
-    "location": "San Francisco",
-    "interests": ["Fitness", "Technology", "Gaming"]
-}
-Scenario: User 405 (age 29) in San Francisco is interested in fitness, technology, and gaming.
-Expected Response:
-json
-Copy code
-{
-    "recommended_ad": 1
-}
-Explanation: The model predicts whether a targeted ad is appropriate (1) or not (0).
---------------------------------------------------------------------------------------------------
-
-
-
-Error Handling Examples
-FastAPI automatically handles errors for invalid inputs based on the schemas.
-
-Example 1: Missing Field
-Request Body (invalid):
-json
-Copy code
-{
-    "video_id": 303
-}
-Response:
-json
-Copy code
-{
-    "detail": [
-        {
-            "loc": ["body", "video_content"],
-            "msg": "field required",
-            "type": "value_error.missing"
-        }
-    ]
-}
-
-
-Example 2: Invalid Data Type
-Request Body (invalid):
-json
-Copy code
-{
-    "user_id": "not_a_number",
-    "video_id": 202,
-    "watch_time": 45.7
-}
-Response:
-json
-Copy code
-{
-    "detail": [
-        {
-            "loc": ["body", "user_id"],
-            "msg": "value is not a valid integer",
-            "type": "type_error.integer"
-        }
-    ]
-}
-
------------------------------------------------------------------------------------
-
-Postman Testing Workflow
-Create a new Postman collection for this project.
-Add three requests to the collection:
-
-
-Recommendations Request: Use the example provided above.
-Moderation Request: Use the real-world content example.
-
-Ad Targeting Request: Use the demographic and interest example.
-Test valid inputs, invalid inputs, and edge cases (e.g., empty strings, negative numbers).
----------------------------------------------------------------------------------------------------
-
-Summary
-This setup allows you to:
-
-Train simple ML models and integrate them with FastAPI.
-Test models using real-world scenarios in Postman.
-Handle input errors effectively with FastAPI's validation.
+# Start the application
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]
