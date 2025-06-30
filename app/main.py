@@ -1,95 +1,154 @@
-from fastapi import FastAPI
-from pydantic import BaseModel
+# main.py - FastAPI ML Service
+
+from fastapi import FastAPI, HTTPException
+from fastapi.middleware.cors import CORSMiddleware
 import joblib
 import numpy as np
-from app.schemas import recommendation, moderation, ad_targeting
+import logging
+from pathlib import Path
 
-# Load pre-trained machine learning models
-# These models are saved in the 'app/models/' directory and are loaded using joblib
-recommendation_model = joblib.load('app/models/recommendation_model.joblib')  # Model for video recommendations
-moderation_model = joblib.load('app/models/moderation_model.joblib')  # Model for content moderation
-ad_targeting_model = joblib.load('app/models/ad_targeting_model.joblib')  # Model for ad targeting
+from app.schemas.recommendation import RecommendationRequest
+from app.schemas.moderation import ModerationRequest
+from app.schemas.ad_targeting import AdTargetingRequest
 
-# Initialize the FastAPI application
-app = FastAPI()
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
-# Root endpoint to check if the API is running
+# Initialize FastAPI app
+app = FastAPI(
+    title="YouTube ML Service",
+    description="Machine Learning service for video recommendations, content moderation, and ad targeting",
+    version="1.0.0"
+)
+
+# Configure CORS
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["http://localhost:8080", "http://localhost:3000"],  # Add your Spring Boot and frontend URLs
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
+# Load ML models
+try:
+    recommendation_model = joblib.load('app/models/recommendation_model.joblib')
+    moderation_model = joblib.load('app/models/moderation_model.joblib')
+    ad_targeting_model = joblib.load('app/models/ad_targeting_model.joblib')
+    logger.info("All ML models loaded successfully")
+except Exception as e:
+    logger.error(f"Error loading models: {e}")
+    raise
+
 @app.get("/")
 def read_root():
-    """
-    Root endpoint for health check.
-    Returns a simple JSON response indicating the API is operational.
-    """
-    return {"FastAPI Machine Learning Models"}
+    """Health check endpoint"""
+    return {"message": "FastAPI ML Service is running", "status": "healthy"}
 
-# Endpoint for video recommendations
+@app.get("/health")
+def health_check():
+    """Detailed health check"""
+    return {
+        "status": "healthy",
+        "service": "FastAPI ML Service",
+        "models_loaded": {
+            "recommendation": recommendation_model is not None,
+            "moderation": moderation_model is not None,
+            "ad_targeting": ad_targeting_model is not None
+        }
+    }
+
 @app.post("/recommendations/")
-async def recommend(request: recommendation.RecommendationRequest):
+async def get_recommendations(request: RecommendationRequest):
     """
-    Predicts a recommended video for a user based on user and video data.
-
-    Args:
-        request (RecommendationRequest): User and video details including:
-                                         - user_id
-                                         - video_id
-                                         - watch_time
-
-    Returns:
-        JSON response with the recommended video ID.
+    Get video recommendations based on user interaction data
     """
-    # Prepare input data for the recommendation model
-    input_data = np.array([[request.user_id, request.video_id, request.watch_time]])
-    
-    # Make a prediction using the recommendation model
-    prediction = recommendation_model.predict(input_data)
-    
-    # Return the recommended video ID
-    return {"recommended_video": int(prediction[0])}
+    try:
+        logger.info(f"Recommendation request for user_id: {request.user_id}")
+        
+        # Prepare input data for the model
+        input_data = np.array([[request.user_id, request.video_id, request.watch_time]])
+        
+        # Make prediction
+        prediction = recommendation_model.predict(input_data)
+        
+        response = {
+            "recommended_video": int(prediction[0]),
+            "user_id": request.user_id,
+            "confidence": float(recommendation_model.predict_proba(input_data)[0].max())
+        }
+        
+        logger.info(f"Recommendation successful: {response}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in recommendation: {e}")
+        raise HTTPException(status_code=500, detail=f"Recommendation failed: {str(e)}")
 
-# Endpoint for content moderation
 @app.post("/moderation/")
-async def moderate(request: moderation.ModerationRequest):
+async def moderate_content(request: ModerationRequest):
     """
-    Predicts the moderation status of a video based on its content.
-
-    Args:
-        request (ModerationRequest): Video details including:
-                                     - video_id
-                                     - video_content (length analyzed)
-
-    Returns:
-        JSON response with the moderation result (e.g., 0 for safe, 1 for flagged).
+    Moderate video content for safety
     """
-    # Prepare input data for the moderation model
-    input_data = np.array([[request.video_id, len(request.video_content)]])
-    
-    # Make a prediction using the moderation model
-    prediction = moderation_model.predict(input_data)
-    
-    # Return the moderation result
-    return {"moderation_result": int(prediction[0])}
+    try:
+        logger.info(f"Moderation request for video_id: {request.video_id}")
+        
+        # Prepare input data for the model
+        content_length = len(request.video_content) if request.video_content else 0
+        input_data = np.array([[request.video_id, content_length]])
+        
+        # Make prediction
+        prediction = moderation_model.predict(input_data)
+        
+        response = {
+            "moderation_result": int(prediction[0]),
+            "video_id": request.video_id,
+            "content_length": content_length,
+            "is_safe": bool(prediction[0] == 1)
+        }
+        
+        logger.info(f"Moderation successful: {response}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in moderation: {e}")
+        raise HTTPException(status_code=500, detail=f"Moderation failed: {str(e)}")
 
-# Endpoint for ad targeting
 @app.post("/ad-targeting/")
-async def ad_targeting(request: ad_targeting.AdTargetingRequest):
+async def target_ads(request: AdTargetingRequest):
     """
-    Predicts the most suitable ad for a user based on demographic and behavioral data.
-
-    Args:
-        request (AdTargetingRequest): User details including:
-                                      - user_id
-                                      - age
-                                      - location
-                                      - interests
-
-    Returns:
-        JSON response with the recommended ad ID.
+    Target ads based on user profile
     """
-    # Prepare input data for the ad targeting model
-    input_data = np.array([[request.user_id, request.age, len(request.location), len(request.interests)]])
-    
-    # Make a prediction using the ad targeting model
-    prediction = ad_targeting_model.predict(input_data)
-    
-    # Return the recommended ad ID
-    return {"recommended_ad": int(prediction[0])}
+    try:
+        logger.info(f"Ad targeting request for user_id: {request.user_id}")
+        
+        # Prepare input data for the model
+        location_length = len(request.location) if request.location else 0
+        interests_count = len(request.interests) if request.interests else 0
+        input_data = np.array([[request.user_id, request.age, location_length, interests_count]])
+        
+        # Make prediction
+        prediction = ad_targeting_model.predict(input_data)
+        
+        response = {
+            "recommended_ad": int(prediction[0]),
+            "user_id": request.user_id,
+            "should_target": bool(prediction[0] == 1),
+            "user_profile": {
+                "age": request.age,
+                "location": request.location,
+                "interests_count": interests_count
+            }
+        }
+        
+        logger.info(f"Ad targeting successful: {response}")
+        return response
+        
+    except Exception as e:
+        logger.error(f"Error in ad targeting: {e}")
+        raise HTTPException(status_code=500, detail=f"Ad targeting failed: {str(e)}")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000)
